@@ -85,33 +85,80 @@ class Player:
         if self.vel_y > 10:
             self.vel_y = 10
     def update(self, platforms: list[pygame.Rect], dx: float) -> None:
+        """
+        Update the player's position, apply physics and resolve
+        collisions.  Horizontal motion is handled first followed by
+        gravity and vertical motion.  Collisions on the vertical axis
+        are resolved using a two‑step approach: direct collision
+        detection to snap onto or bump off of platforms when moving
+        vertically, followed by a secondary contact check that keeps
+        the player attached to a platform when they are already
+        standing on it but minor rounding errors or zero velocity
+        prevent an actual rectangle overlap.  This improves the
+        reliability of standing on platforms and prevents the player
+        from unexpectedly falling through due to small integration
+        steps or frame timing.
+        """
         # Move horizontally and resolve collisions
         self.rect.x += dx
         for plat in platforms:
             if self.rect.colliderect(plat):
                 if dx > 0:
+                    # Moving right; clamp to left side of platform
                     self.rect.right = plat.left
                 elif dx < 0:
+                    # Moving left; clamp to right side of platform
                     self.rect.left = plat.right
-        # Apply gravity and move vertically
+
+        # Apply gravity and update vertical velocity.  Cap downward speed.
         self.apply_gravity()
+
+        # Perform vertical movement
         self.rect.y += self.vel_y
+
+        # Reset grounded state each frame; will be set to True when on a platform.
         self.on_ground = False
+        landed = False
+        # First pass: resolve any actual rectangle overlaps caused by the vertical move.
         for plat in platforms:
             if self.rect.colliderect(plat):
-                if self.vel_y > 0 and self.rect.bottom - self.vel_y <= plat.top:
+                if self.vel_y > 0:
+                    # Falling down: snap player's feet to platform top
                     self.rect.bottom = plat.top
                     self.vel_y = 0
                     self.on_ground = True
-                elif self.vel_y < 0 and self.rect.top - self.vel_y >= plat.bottom:
+                    landed = True
+                elif self.vel_y < 0:
+                    # Moving up: bump head on underside of platform
                     self.rect.top = plat.bottom
                     self.vel_y = 0
-        # Animate frames: idle frame when not moving horizontally
+                # We break here intentionally only for the falling case;
+                # but continue checking other overlaps when moving up.
+        # Second pass: if we did not land via overlap but vertical
+        # velocity has come to rest (i.e. 0), check if the player's
+        # feet are aligned with a platform within a small epsilon.  If
+        # so, snap to the platform and treat as grounded.  This covers
+        # the case where the player's bottom sits exactly at the
+        # platform top without overlapping due to discrete movement.
+        if not self.on_ground and abs(self.vel_y) < 1e-3:
+            for plat in platforms:
+                # Check horizontal overlap
+                if self.rect.right > plat.left and self.rect.left < plat.right:
+                    # Check if we are almost exactly on top of this platform
+                    delta = plat.top - self.rect.bottom
+                    if 0 <= delta <= 3:
+                        self.rect.bottom = plat.top
+                        self.on_ground = True
+                        break
+
+        # Animate frames: use idle frame when not moving horizontally.  Skip
+        # the idle frame when running.
         if dx != 0:
             self.frame_timer += 1
             if self.frame_timer >= 8:
                 self.frame_timer = 0
-                # Skip frame 0 (idle) when running
+                # Skip frame 0 (idle) when running.  Frames list is
+                # [idle, run1, run2, run3]; cycling through run1..run3.
                 self.frame_index = (self.frame_index + 1) % (len(self.frames) - 1) + 1
         else:
             self.frame_index = 0
