@@ -270,19 +270,51 @@ class Player(pygame.sprite.Sprite):
                 self.rect.left = plat.rect.right
 
     def handle_vertical_collisions(self):
-        """Resolve vertical collisions with platforms."""
-        # Reset on_ground; will be set if collision below occurs
+        """Resolve vertical collisions with platforms using a two‑pass approach.
+
+        The first pass snaps the player onto or bumps them off of
+        platforms when their rectangle overlaps a platform due to
+        vertical motion. If the player is falling and overlaps a
+        platform from above, their feet are clamped to the platform
+        top and their vertical velocity is reset; if they collide
+        while moving upward their head is bumped on the underside
+        of the platform. A secondary check handles cases where the
+        player is exactly aligned with a platform without an actual
+        rectangle overlap (e.g. due to discrete movement steps or
+        rounding). In that case we test for horizontal overlap and
+        snap the player's feet to the platform if they are within a
+        small threshold below it. This prevents the player from
+        unexpectedly falling off platforms when their velocity
+        reaches zero and improves the reliability of standing on
+        platforms.
+        """
+        # Reset grounded state each frame
         self.on_ground = False
+        # First pass: resolve actual overlaps from vertical motion
         collisions = pygame.sprite.spritecollide(self, self.platforms, False)
         for plat in collisions:
-            if self.vel_y > 0:  # falling down
+            if self.vel_y > 0:
+                # Falling down; clamp feet to platform top
                 self.rect.bottom = plat.rect.top
                 self.vel_y = 0
                 self.on_ground = True
-            elif self.vel_y < 0:  # moving up
+            elif self.vel_y < 0:
+                # Moving up; bump head on underside
                 self.rect.top = plat.rect.bottom
                 self.vel_y = 0
-        
+        # Second pass: if we didn't land via overlap but our vertical
+        # velocity is nearly zero, check if we're almost exactly on a
+        # platform. Snap to its top if so to stay grounded.
+        if not self.on_ground and abs(self.vel_y) < 1e-3:
+            for plat in self.platforms:
+                # horizontal overlap check
+                if self.rect.right > plat.rect.left and self.rect.left < plat.rect.right:
+                    delta = plat.rect.top - self.rect.bottom
+                    if 0 <= delta <= 3:
+                        self.rect.bottom = plat.rect.top
+                        self.on_ground = True
+                        break
+
     def animate(self):
         """Choose the correct frame based on movement and action."""
         # Determine which image set to use based on facing direction
@@ -400,6 +432,14 @@ class Game:
         level_platforms = self.levels[index]
         # Determine world width as farthest platform plus margin
         self.world_width = max([x for x, _ in level_platforms]) + 500
+        
+        # Resize background to span the entire level width.  This
+        # creates a large static backdrop that is revealed as the
+        # camera scrolls horizontally.  Without this call the
+        # background would only span the screen width and would
+        # appear to move relative to the platforms.
+        self.bg_scaled = pygame.transform.scale(self.background_img,
+                                                (self.world_width, SCREEN_HEIGHT))
         
         # Spawn platforms
         for x, y in level_platforms:
@@ -561,11 +601,12 @@ class Game:
                         self.game_over = True
             
             # Draw everything
-            # Draw background with parallax (two images repeated horizontally)
-            bg_offset = -(getattr(self, 'last_camera_x', 0) * 0.5) % self.bg_scaled.get_width()
-            # draw two background images to cover the width
-            self.screen.blit(self.bg_scaled, (-bg_offset, 0))
-            self.screen.blit(self.bg_scaled, (-bg_offset + self.bg_scaled.get_width(), 0))
+            # Draw background: a large static backdrop anchored to world
+            # position.  We shift it horizontally by the camera offset
+            # so that it moves in sync with the level instead of
+            # exhibiting a parallax effect.
+            cam_x = getattr(self, 'last_camera_x', 0)
+            self.screen.blit(self.bg_scaled, (-cam_x, 0))
             
             # Draw sprites relative to camera
             for sprite in self.platforms:
