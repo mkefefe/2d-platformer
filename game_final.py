@@ -64,9 +64,14 @@ ATTACK_DURATION = 15  # frames that attack animation is active
 ENEMY_SPEED = 2
 LEVEL_COUNT = 30
 
-# Asset directory relative to this script. When running from project root
-# ``detailed_assets`` should exist alongside this file.
-ASSET_DIR = os.path.join(os.path.dirname(__file__), 'detailed_assets')
+# Asset directory relative to this script. All art assets (player frames,
+# enemy, platform, background, coin frames, heart) are expected to live
+# alongside this file in the repository root. Previously the code assumed
+# they resided in a subfolder called ``detailed_assets``, but to simplify
+# distribution the assets are now read from the same directory as this
+# script. If you wish to organise assets into a subfolder, set
+# ``ASSET_DIR`` accordingly and move the files.
+ASSET_DIR = os.path.dirname(__file__)
 
 
 # ---------------------------------------------------------------------------
