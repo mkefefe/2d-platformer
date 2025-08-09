@@ -119,10 +119,25 @@ class Player:
         frame = self.frames[self.frame_index]
         surface.blit(frame, (self.rect.x - offset_x, self.rect.y))
     def reset_position(self, x: int, y: int) -> None:
+        """
+        Reset the player's position to a given x, y coordinate and
+        initialise physics so they start standing on a platform.
+
+        Without explicitly setting the ``on_ground`` flag to ``True``
+        after repositioning the character, the first update tick will
+        apply gravity and cause the player to drift off the platform
+        before collision detection resolves the landing. By marking
+        the player as grounded and zeroing the vertical velocity here
+        we ensure they stay planted on the platform at the start of
+        each level and after respawns.
+        """
         self.rect.x = x
         self.rect.y = y
+        # Reset vertical velocity so the player isn't moving when spawned
         self.vel_y = 0.0
-        self.on_ground = False
+        # Treat the player as standing on solid ground so gravity won't
+        # immediately pull them off the platform on the next frame.
+        self.on_ground = True
 
 
 class AnimatedCoin:
